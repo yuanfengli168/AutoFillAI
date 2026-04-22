@@ -69,15 +69,29 @@ export async function saveProfileValue(fieldType: FieldType, input: Partial<Valu
 export async function saveMapping(mapping: Omit<MappingRule, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<MappingRule, 'id' | 'createdAt' | 'updatedAt'>>) {
   return updateState((state) => {
     const now = nowIso();
+    const matchedExisting = mapping.id
+      ? state.mappings.find((item) => item.id === mapping.id)
+      : state.mappings.find(
+          (item) =>
+            item.domain === mapping.domain &&
+            item.fieldType === mapping.fieldType &&
+            item.matcher.name === mapping.matcher.name &&
+            item.matcher.id === mapping.matcher.id &&
+            item.matcher.label === mapping.matcher.label &&
+            item.matcher.placeholder === mapping.matcher.placeholder &&
+            item.matcher.path === mapping.matcher.path
+        );
+
     const next: MappingRule = {
+      ...matchedExisting,
       ...mapping,
-      id: mapping.id ?? uid('mapping'),
-      createdAt: mapping.createdAt ?? now,
+      id: matchedExisting?.id ?? mapping.id ?? uid('mapping'),
+      createdAt: matchedExisting?.createdAt ?? mapping.createdAt ?? now,
       updatedAt: now
     } as MappingRule;
 
-    const mappings = state.mappings.some((item) => item.id === next.id)
-      ? state.mappings.map((item) => (item.id === next.id ? next : item))
+    const mappings = matchedExisting
+      ? state.mappings.map((item) => (item.id === matchedExisting.id ? next : item))
       : [...state.mappings, next];
 
     return { ...state, mappings };
