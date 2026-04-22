@@ -31,4 +31,25 @@ Help Jacky fill common application and profile fields quickly, accurately, and w
 
 ## Status
 
-Planning/spec phase.
+Functional MVP scaffolded on branch `mvp1`.
+
+Implemented:
+- current-page scan for standard form controls
+- field metadata extraction + heuristic classification
+- popup UI to inspect scan results
+- local profile value storage + options page
+- high-confidence autofill for empty fields
+- learned site mappings and value-usage audit updates
+
+## Local development
+
+```bash
+npm install
+npm run build
+```
+
+Then load `dist/` as an unpacked Chrome extension.
+
+## MVP notes
+
+- [MVP implementation notes](./docs/mvp-notes.md)

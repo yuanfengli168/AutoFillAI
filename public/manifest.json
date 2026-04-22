@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "AutoFillAI",
+  "version": "0.1.0",
+  "description": "Smart local-first form scan and autofill for job applications.",
+  "permissions": ["storage", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AutoFillAI"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
