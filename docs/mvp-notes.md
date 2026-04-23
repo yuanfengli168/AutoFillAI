@@ -12,8 +12,11 @@ A working Chrome extension MVP built with:
 ## Current capabilities
 
 - Scan the current page for `input`, `textarea`, and `select` elements
-- Extract field metadata: label, name, id, placeholder, autocomplete, nearby text, visibility, disabled state
+- Extract field metadata: label, name, id, placeholder, autocomplete, nearby text, visibility, disabled state, and native select option labels
 - Heuristically classify common profile/application fields
+- Allow popup review controls to force-use or skip fields regardless of the automatic confidence threshold
+- Support pinned popup scan state per tab so switching away and back does not require an immediate rescan
+- Support custom profile keys beyond the built-in field list and store values against those keys
 - Resolve saved profile values using this order:
   1. site mapping with preferred value
   2. site mapping without preferred value
@@ -37,7 +40,7 @@ A working Chrome extension MVP built with:
 ## Known caveats
 
 - Custom JS widgets / headless comboboxes are not fully supported yet.
-- Native `select` elements are scanned, but option-level UX and custom radio/yes-no widgets are not surfaced well yet.
+- Native `select` elements are scanned and their option labels are shown, but custom radio/yes-no widgets are still not surfaced well yet.
 - Select filling currently uses raw option values; labels are not fuzzy-matched yet.
 - Popup only exposes "fill high-confidence" right now, not per-field manual fill controls.
 - Popup scan state is not pinned yet; switching tabs or closing/reopening the popup requires a fresh scan.

@@ -18,6 +18,7 @@ const RULES: Rule[] = [
   { fieldType: 'phone', weight: 0.82, reason: 'mentions phone', test: (ctx) => includesAny(ctx, ['phone', 'mobile', 'telephone', 'contact number']) },
   { fieldType: 'location_city', weight: 0.72, reason: 'mentions city', test: (ctx) => includesAny(ctx, ['city', 'town']) },
   { fieldType: 'location_full', weight: 0.8, reason: 'mentions location', test: (ctx) => includesAny(ctx, ['location', 'address', 'where are you based']) },
+  { fieldType: 'country', weight: 0.88, reason: 'mentions country', test: (ctx) => includesAny(ctx, ['country', 'citizenship', 'nationality']) },
   { fieldType: 'linkedin_url', weight: 0.9, reason: 'mentions linkedin', test: (ctx) => includesAny(ctx, ['linkedin']) },
   { fieldType: 'github_url', weight: 0.9, reason: 'mentions github', test: (ctx) => includesAny(ctx, ['github']) },
   { fieldType: 'portfolio_url', weight: 0.9, reason: 'mentions portfolio', test: (ctx) => includesAny(ctx, ['portfolio']) },

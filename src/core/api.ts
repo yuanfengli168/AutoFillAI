@@ -1,10 +1,11 @@
 import { classifyField } from './field-classifier';
-import { resolveValue } from './resolver';
+import { resolveValue, resolveValueForFieldType } from './resolver';
 import type { AppState, DetectedField, EnrichedDetectedField, FillInstruction, FillResult, MappingRule, ValueVersion, FieldType, FieldSignature } from './types';
 
 export interface AutoFillCoreApi {
   classifyField(signature: FieldSignature): ReturnType<typeof classifyField>;
   resolveValue(field: DetectedField, state: AppState): ReturnType<typeof resolveValue>;
+  resolveValueForFieldType(fieldType: FieldType, state: AppState, baseConfidence: number): ReturnType<typeof resolveValueForFieldType>;
   enrichScan(fields: DetectedField[], state: AppState): EnrichedDetectedField[];
   createFillInstructions(fields: EnrichedDetectedField[], threshold: number): FillInstruction[];
 }
@@ -12,6 +13,9 @@ export interface AutoFillCoreApi {
 export const autoFillCoreApi = {
   classifyField,
   resolveValue,
+  resolveValueForFieldType(fieldType: FieldType, state: AppState, baseConfidence: number) {
+    return resolveValueForFieldType(fieldType, state, baseConfidence, 'manual_override', [`user selected profile key ${fieldType}`]);
+  },
   enrichScan(fields: DetectedField[], state: AppState): EnrichedDetectedField[] {
     return fields.map((field) => ({ ...field, resolved: resolveValue(field, state) }));
   },

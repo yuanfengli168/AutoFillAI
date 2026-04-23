@@ -59,8 +59,10 @@ export const DEFAULT_STATE: AppState = {
     ]
   },
   mappings: [],
+  customFieldTypes: [],
+  pinnedScans: {},
   settings: {
-    autoFillThreshold: 0.82,
+    autoFillThreshold: 0.6,
     suggestThreshold: 0.55,
     rememberCorrections: true
   },

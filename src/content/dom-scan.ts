@@ -47,6 +47,13 @@ function getCurrentValue(element: HTMLElement) {
   return element.textContent ?? '';
 }
 
+function getOptions(element: HTMLElement) {
+  if (!(element instanceof HTMLSelectElement)) return undefined;
+  return Array.from(element.options)
+    .map((option) => option.textContent?.trim())
+    .filter((value): value is string => !!value && value.length > 0);
+}
+
 function buildSignature(element: HTMLElement): FieldSignature {
   return {
     tagName: element.tagName.toLowerCase(),
@@ -78,7 +85,8 @@ export function scanPage(): DetectedField[] {
       candidateFieldTypes: classifyField(signature),
       currentValue: getCurrentValue(element),
       visible: isVisible(element),
-      disabled: (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled ?? false
+      disabled: (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled ?? false,
+      options: getOptions(element)
     } satisfies DetectedField;
   });
 }
