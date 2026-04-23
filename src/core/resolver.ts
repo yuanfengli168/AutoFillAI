@@ -1,10 +1,63 @@
 import { findMapping } from './mappings';
-import type { AppState, DetectedField, ResolvedFieldValue, ValueVersion } from './types';
+import type { AppState, DetectedField, FieldType, ResolvedFieldValue, ValueVersion } from './types';
 
 const sortByMostRecent = (values: ValueVersion[]) =>
   [...values].sort((a, b) => (b.lastUsedAt ?? b.updatedAt).localeCompare(a.lastUsedAt ?? a.updatedAt));
 
 const sortByMostFrequent = (values: ValueVersion[]) => [...values].sort((a, b) => b.useCount - a.useCount);
+
+export function resolveValueForFieldType(
+  fieldType: FieldType,
+  state: AppState,
+  baseConfidence: number,
+  source: ResolvedFieldValue['source'],
+  reasons: string[]
+): ResolvedFieldValue {
+  const values = (state.profileValues[fieldType] ?? []).filter((item) => item.active);
+
+  const pinned = values.find((item) => item.pinned);
+  if (pinned) {
+    return {
+      fieldType,
+      valueId: pinned.id,
+      value: pinned.value,
+      confidence: Math.min(1, Math.max(baseConfidence, 0.95)),
+      source,
+      reasons
+    };
+  }
+
+  const recent = sortByMostRecent(values)[0];
+  if (recent) {
+    return {
+      fieldType,
+      valueId: recent.id,
+      value: recent.value,
+      confidence: Math.min(0.93, Math.max(baseConfidence, 0.72)),
+      source,
+      reasons
+    };
+  }
+
+  const frequent = sortByMostFrequent(values)[0];
+  if (frequent) {
+    return {
+      fieldType,
+      valueId: frequent.id,
+      value: frequent.value,
+      confidence: Math.min(0.9, Math.max(baseConfidence, 0.68)),
+      source,
+      reasons
+    };
+  }
+
+  return {
+    fieldType,
+    confidence: Math.max(0.2, baseConfidence - 0.2),
+    source: 'none',
+    reasons: ['no saved value available for this field type']
+  };
+}
 
 export function resolveValue(field: DetectedField, state: AppState): ResolvedFieldValue {
   const candidate = field.candidateFieldTypes[0];
@@ -40,41 +93,19 @@ export function resolveValue(field: DetectedField, state: AppState): ResolvedFie
     };
   }
 
-  const pinned = values.find((item) => item.pinned);
-  if (pinned) {
-    return {
-      fieldType: candidate.fieldType,
-      valueId: pinned.id,
-      value: pinned.value,
-      confidence: Math.min(0.98, candidate.score),
-      source: 'pinned_default',
-      reasons: ['using pinned default value']
-    };
-  }
+  const resolved = resolveValueForFieldType(
+    candidate.fieldType,
+    state,
+    candidate.score,
+    values.find((item) => item.pinned) ? 'pinned_default' : sortByMostRecent(values)[0] ? 'most_recent' : 'most_frequent',
+    values.find((item) => item.pinned)
+      ? ['using pinned default value']
+      : sortByMostRecent(values)[0]
+        ? ['using most recently used value']
+        : ['using most frequently used value']
+  );
 
-  const recent = sortByMostRecent(values)[0];
-  if (recent) {
-    return {
-      fieldType: candidate.fieldType,
-      valueId: recent.id,
-      value: recent.value,
-      confidence: Math.min(0.93, candidate.score - 0.02),
-      source: 'most_recent',
-      reasons: ['using most recently used value']
-    };
-  }
-
-  const frequent = sortByMostFrequent(values)[0];
-  if (frequent) {
-    return {
-      fieldType: candidate.fieldType,
-      valueId: frequent.id,
-      value: frequent.value,
-      confidence: Math.min(0.9, candidate.score - 0.05),
-      source: 'most_frequent',
-      reasons: ['using most frequently used value']
-    };
-  }
+  if (resolved.source !== 'none') return resolved;
 
   return {
     fieldType: candidate.fieldType,

@@ -1,11 +1,28 @@
 import { DEFAULT_STATE } from './defaults';
-import type { AppState, AuditEvent, FieldType, MappingRule, ValueVersion } from './types';
-import { nowIso, uid } from './utils';
+import type { AppState, AuditEvent, FieldType, MappingRule, PinnedScan, ValueVersion } from './types';
+import { nowIso, normalizeText, uid } from './utils';
 
 const STORAGE_KEY = 'autofillai_state';
 
 function hasChromeStorage() {
   return typeof chrome !== 'undefined' && !!chrome.storage?.local;
+}
+
+function isBuiltInFieldType(fieldType: string) {
+  return Object.prototype.hasOwnProperty.call(DEFAULT_STATE.profileValues, fieldType);
+}
+
+function mergeState(saved: AppState): AppState {
+  return {
+    ...DEFAULT_STATE,
+    ...saved,
+    profileValues: { ...DEFAULT_STATE.profileValues, ...(saved.profileValues ?? {}) },
+    customFieldTypes: saved.customFieldTypes ?? [],
+    pinnedScans: saved.pinnedScans ?? {},
+    settings: { ...DEFAULT_STATE.settings, ...saved.settings },
+    mappings: saved.mappings ?? [],
+    auditLog: saved.auditLog ?? []
+  };
 }
 
 export async function getState(): Promise<AppState> {
@@ -16,14 +33,7 @@ export async function getState(): Promise<AppState> {
     await saveState(DEFAULT_STATE);
     return structuredClone(DEFAULT_STATE);
   }
-  return {
-    ...DEFAULT_STATE,
-    ...saved,
-    profileValues: { ...DEFAULT_STATE.profileValues, ...saved.profileValues },
-    settings: { ...DEFAULT_STATE.settings, ...saved.settings },
-    mappings: saved.mappings ?? [],
-    auditLog: saved.auditLog ?? []
-  };
+  return mergeState(saved);
 }
 
 export async function saveState(state: AppState): Promise<void> {
@@ -38,12 +48,34 @@ export async function updateState(updater: (state: AppState) => AppState | Promi
   return next;
 }
 
-export async function saveProfileValue(fieldType: FieldType, input: Partial<ValueVersion> & { value: string }) {
+export async function ensureFieldType(fieldType: FieldType) {
+  const normalized = normalizeText(fieldType).replace(/\s+/g, '_');
+  if (!normalized || normalized === 'unknown') return getState();
+
   return updateState((state) => {
+    const nextProfileValues = state.profileValues[normalized] ? state.profileValues : { ...state.profileValues, [normalized]: [] };
+    const nextCustomFieldTypes = isBuiltInFieldType(normalized) || state.customFieldTypes.includes(normalized)
+      ? state.customFieldTypes
+      : [...state.customFieldTypes, normalized].sort();
+
+    return {
+      ...state,
+      profileValues: nextProfileValues,
+      customFieldTypes: nextCustomFieldTypes
+    };
+  });
+}
+
+export async function saveProfileValue(fieldType: FieldType, input: Partial<ValueVersion> & { value: string }) {
+  const normalizedFieldType = normalizeText(fieldType).replace(/\s+/g, '_');
+  const baseState = await ensureFieldType(normalizedFieldType);
+
+  return updateState((currentState) => {
+    const state = mergeState({ ...currentState, profileValues: { ...baseState.profileValues, ...currentState.profileValues } });
     const now = nowIso();
-    const existing = state.profileValues[fieldType] ?? [];
+    const existing = state.profileValues[normalizedFieldType] ?? [];
     const version: ValueVersion = {
-      id: input.id ?? uid(fieldType),
+      id: input.id ?? uid(normalizedFieldType),
       value: input.value,
       label: input.label ?? 'manual',
       pinned: input.pinned ?? existing.length === 0,
@@ -61,8 +93,33 @@ export async function saveProfileValue(fieldType: FieldType, input: Partial<Valu
 
     return {
       ...state,
-      profileValues: { ...state.profileValues, [fieldType]: nextValues }
+      profileValues: { ...state.profileValues, [normalizedFieldType]: nextValues }
     };
+  });
+}
+
+export async function updateSettings(settingsPatch: Partial<AppState['settings']>) {
+  return updateState((state) => ({
+    ...state,
+    settings: { ...state.settings, ...settingsPatch }
+  }));
+}
+
+export async function savePinnedScan(scan: PinnedScan) {
+  return updateState((state) => ({
+    ...state,
+    pinnedScans: {
+      ...state.pinnedScans,
+      [String(scan.tabId)]: scan
+    }
+  }));
+}
+
+export async function clearPinnedScan(tabId: number) {
+  return updateState((state) => {
+    const pinnedScans = { ...state.pinnedScans };
+    delete pinnedScans[String(tabId)];
+    return { ...state, pinnedScans };
   });
 }
 

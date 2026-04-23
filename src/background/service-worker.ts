@@ -1,4 +1,14 @@
-import { appendAuditEvent, getState, markValueUsed, saveMapping, saveProfileValue } from '../core/storage';
+import {
+  appendAuditEvent,
+  clearPinnedScan,
+  ensureFieldType,
+  getState,
+  markValueUsed,
+  saveMapping,
+  savePinnedScan,
+  saveProfileValue,
+  updateSettings
+} from '../core/storage';
 import type { BackgroundMessage } from '../shared/messages';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -13,7 +23,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
         return;
       }
       case 'SAVE_PROFILE_VALUE': {
-        const state = await saveProfileValue(message.payload.fieldType as any, {
+        const state = await saveProfileValue(message.payload.fieldType, {
           value: message.payload.value,
           label: message.payload.label,
           pinned: message.payload.pinned
@@ -29,7 +39,7 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
         return;
       }
       case 'MARK_VALUE_USED': {
-        const state = await markValueUsed(message.payload.fieldType as any, message.payload.valueId);
+        const state = await markValueUsed(message.payload.fieldType, message.payload.valueId);
         sendResponse(state);
         return;
       }
@@ -40,6 +50,22 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
           details: message.payload.details
         });
         sendResponse(state);
+        return;
+      }
+      case 'UPDATE_SETTINGS': {
+        sendResponse(await updateSettings(message.payload as any));
+        return;
+      }
+      case 'ENSURE_FIELD_TYPE': {
+        sendResponse(await ensureFieldType(message.payload.fieldType));
+        return;
+      }
+      case 'SAVE_PINNED_SCAN': {
+        sendResponse(await savePinnedScan(message.payload));
+        return;
+      }
+      case 'CLEAR_PINNED_SCAN': {
+        sendResponse(await clearPinnedScan(message.payload.tabId));
         return;
       }
       default:

@@ -6,6 +6,7 @@ export const FIELD_TYPES = [
   'phone',
   'location_city',
   'location_full',
+  'country',
   'linkedin_url',
   'portfolio_url',
   'current_title',
@@ -19,7 +20,8 @@ export const FIELD_TYPES = [
   'unknown'
 ] as const;
 
-export type FieldType = (typeof FIELD_TYPES)[number];
+export type BuiltInFieldType = (typeof FIELD_TYPES)[number];
+export type FieldType = string;
 
 export interface FieldSignature {
   tagName: string;
@@ -48,6 +50,7 @@ export interface DetectedField {
   currentValue?: string;
   visible: boolean;
   disabled: boolean;
+  options?: string[];
 }
 
 export interface ValueVersion {
@@ -80,7 +83,7 @@ export interface ResolvedFieldValue {
   valueId?: string;
   value?: string;
   confidence: number;
-  source: 'site_mapping' | 'pinned_default' | 'most_recent' | 'most_frequent' | 'none';
+  source: 'site_mapping' | 'pinned_default' | 'most_recent' | 'most_frequent' | 'manual_override' | 'none';
   reasons: string[];
 }
 
@@ -96,8 +99,19 @@ export interface AuditEvent {
   details?: Record<string, unknown>;
 }
 
+export interface PinnedScan {
+  tabId: number;
+  url: string;
+  fields: DetectedField[];
+  fieldSelections?: Record<string, boolean>;
+  fieldTypeOverrides?: Record<string, FieldType>;
+  savedAt: string;
+}
+
 export interface AppState {
-  profileValues: Partial<Record<FieldType, ValueVersion[]>>;
+  profileValues: Record<string, ValueVersion[]>;
+  customFieldTypes: string[];
+  pinnedScans: Record<string, PinnedScan>;
   mappings: MappingRule[];
   settings: {
     autoFillThreshold: number;
