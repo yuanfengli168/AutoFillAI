@@ -25,7 +25,7 @@ async function ensureContentScript(tabId: number) {
 
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['content-bootstrap.js']
+    files: ['content.js']
   });
 
   await chrome.tabs.sendMessage(tabId, { type: 'SCAN_PAGE' });
