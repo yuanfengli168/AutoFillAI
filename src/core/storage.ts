@@ -74,11 +74,12 @@ export async function saveProfileValue(fieldType: FieldType, input: Partial<Valu
     const state = mergeState({ ...currentState, profileValues: { ...baseState.profileValues, ...currentState.profileValues } });
     const now = nowIso();
     const existing = state.profileValues[normalizedFieldType] ?? [];
+    const shouldPin = input.pinned ?? false;
     const version: ValueVersion = {
       id: input.id ?? uid(normalizedFieldType),
       value: input.value,
       label: input.label ?? 'manual',
-      pinned: input.pinned ?? existing.length === 0,
+      pinned: shouldPin,
       active: input.active ?? true,
       useCount: input.useCount ?? 0,
       createdAt: input.createdAt ?? now,
@@ -87,13 +88,39 @@ export async function saveProfileValue(fieldType: FieldType, input: Partial<Valu
       source: input.source ?? 'manual'
     };
 
-    const nextValues = input.id
+    const withUpsert = input.id
       ? existing.map((item) => (item.id === input.id ? { ...item, ...version, updatedAt: now } : item))
       : [...existing, version];
+
+    const nextValues = shouldPin
+      ? withUpsert.map((item) => ({ ...item, pinned: item.id === version.id }))
+      : withUpsert;
 
     return {
       ...state,
       profileValues: { ...state.profileValues, [normalizedFieldType]: nextValues }
+    };
+  });
+}
+
+export async function setPinnedValue(fieldType: FieldType, valueId?: string) {
+  const normalizedFieldType = normalizeText(fieldType).replace(/\s+/g, '_');
+  const baseState = await ensureFieldType(normalizedFieldType);
+
+  return updateState((currentState) => {
+    const state = mergeState({ ...currentState, profileValues: { ...baseState.profileValues, ...currentState.profileValues } });
+    const values = state.profileValues[normalizedFieldType] ?? [];
+
+    return {
+      ...state,
+      profileValues: {
+        ...state.profileValues,
+        [normalizedFieldType]: values.map((item) => ({
+          ...item,
+          pinned: valueId ? item.id === valueId : false,
+          updatedAt: item.id === valueId || item.pinned ? nowIso() : item.updatedAt
+        }))
+      }
     };
   });
 }

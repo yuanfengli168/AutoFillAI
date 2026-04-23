@@ -21,6 +21,7 @@ export function Options() {
   const [label, setLabel] = useState('manual');
   const [customKey, setCustomKey] = useState('');
   const [threshold, setThreshold] = useState('0.60');
+  const [savePinned, setSavePinned] = useState(false);
   const [message, setMessage] = useState('');
 
   async function refresh() {
@@ -37,11 +38,12 @@ export function Options() {
     if (!value.trim()) return;
     await chrome.runtime.sendMessage({
       type: 'SAVE_PROFILE_VALUE',
-      payload: { fieldType, value: value.trim(), label, pinned: false }
+      payload: { fieldType, value: value.trim(), label, pinned: savePinned }
     });
     setValue('');
     setLabel('manual');
-    setMessage(`Saved ${fieldType} value.`);
+    setSavePinned(false);
+    setMessage(`Saved ${fieldType} value${savePinned ? ' as the default' : ''}.`);
     await refresh();
   }
 
@@ -63,6 +65,12 @@ export function Options() {
     await refresh();
   }
 
+  async function pinValue(nextFieldType: FieldType, valueId?: string) {
+    await chrome.runtime.sendMessage({ type: 'SET_PINNED_VALUE', payload: { fieldType: nextFieldType, valueId } });
+    setMessage(valueId ? `Updated pinned default for ${nextFieldType}.` : `Cleared pinned default for ${nextFieldType}.`);
+    await refresh();
+  }
+
   useEffect(() => {
     void refresh();
   }, []);
@@ -71,7 +79,7 @@ export function Options() {
     <div className="app" style={{ maxWidth: 980, margin: '0 auto' }}>
       <div className="card">
         <strong>AutoFillAI settings</strong>
-        <div className="muted">Manage saved profile values, custom profile keys, thresholds, and learned mappings.</div>
+        <div className="muted">Manage saved profile values, explicit default values, custom profile keys, thresholds, and learned mappings.</div>
       </div>
 
       <div className="card">
@@ -113,6 +121,10 @@ export function Options() {
           <input type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Value" />
           <button onClick={() => void save()} disabled={!value.trim()}>Save value</button>
         </div>
+        <label className="muted" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+          <input type="checkbox" checked={savePinned} onChange={(e) => setSavePinned(e.target.checked)} />
+          Save as pinned default for this field type
+        </label>
         {message ? <div className="muted" style={{ marginTop: 8 }}>{message}</div> : null}
       </div>
 
@@ -121,15 +133,32 @@ export function Options() {
         <div className="field-list" style={{ marginTop: 10, maxHeight: 'none' }}>
           {availableFieldTypes.map((type) => {
             const values = state?.profileValues[type] ?? [];
+            const pinnedEntry = values.find((entry) => entry.pinned);
             return (
               <div key={type} className="field-item">
                 <div className="row" style={{ justifyContent: 'space-between' }}>
                   <strong>{type}</strong>
                   <span className="badge">{values.length}</span>
                 </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Default: {pinnedEntry ? <span className="mono">{pinnedEntry.value}</span> : 'none pinned'}
+                  {pinnedEntry?.label ? ` (${pinnedEntry.label})` : ''}
+                </div>
                 {values.length ? values.map((entry) => (
-                  <div key={entry.id} className="muted" style={{ marginTop: 6 }}>
-                    <span className="mono">{entry.value}</span> — {entry.label || 'manual'} {entry.pinned ? '(pinned)' : ''} · used {entry.useCount}x
+                  <div key={entry.id} className="field-item" style={{ marginTop: 8 }}>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div className="muted" style={{ flex: 1 }}>
+                        <div><span className="mono">{entry.value}</span></div>
+                        <div style={{ marginTop: 4 }}>
+                          {entry.label || 'manual'} {entry.pinned ? '(pinned default)' : ''} · used {entry.useCount}x
+                        </div>
+                      </div>
+                      {entry.pinned ? (
+                        <button className="secondary" onClick={() => void pinValue(type, undefined)}>Clear default</button>
+                      ) : (
+                        <button onClick={() => void pinValue(type, entry.id)}>Make default</button>
+                      )}
+                    </div>
                   </div>
                 )) : <div className="muted" style={{ marginTop: 6 }}>No saved values yet.</div>}
               </div>

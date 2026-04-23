@@ -105,6 +105,7 @@ export interface PinnedScan {
   fields: DetectedField[];
   fieldSelections?: Record<string, boolean>;
   fieldTypeOverrides?: Record<string, FieldType>;
+  fieldValueOverrides?: Record<string, string>;
   savedAt: string;
 }
 
