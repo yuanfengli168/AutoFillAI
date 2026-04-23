@@ -25,8 +25,10 @@ async function ensureContentScript(tabId: number) {
 
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['content.js']
+    files: ['content-bootstrap.js']
   });
+
+  await chrome.tabs.sendMessage(tabId, { type: 'SCAN_PAGE' });
 }
 
 async function sendMessageToPage<T>(tabId: number, message: { type: 'SCAN_PAGE' } | { type: 'FILL_FIELDS'; payload: { instructions: FillInstruction[]; overwrite?: boolean } }): Promise<T> {
