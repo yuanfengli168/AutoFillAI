@@ -14,6 +14,12 @@
     "default_title": "AutoFillAI"
   },
   "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["content.js", "assets/*.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
