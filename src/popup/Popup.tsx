@@ -12,6 +12,28 @@ async function getState(): Promise<AppState> {
   return chrome.runtime.sendMessage({ type: 'GET_STATE' });
 }
 
+async function ensureContentScript(tabId: number) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'SCAN_PAGE' });
+    return;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('Receiving end does not exist')) {
+      throw error;
+    }
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files: ['content.js']
+  });
+}
+
+async function sendMessageToPage<T>(tabId: number, message: { type: 'SCAN_PAGE' } | { type: 'FILL_FIELDS'; payload: { instructions: FillInstruction[]; overwrite?: boolean } }): Promise<T> {
+  await ensureContentScript(tabId);
+  return chrome.tabs.sendMessage(tabId, message);
+}
+
 export function Popup() {
   const [state, setState] = useState<AppState | null>(null);
   const [fields, setFields] = useState<EnrichedDetectedField[]>([]);
@@ -37,7 +59,7 @@ export function Popup() {
     try {
       const [tabId, latestState] = await Promise.all([getActiveTabId(), refreshState()]);
       if (!tabId) throw new Error('No active tab found');
-      const response = await chrome.tabs.sendMessage(tabId, { type: 'SCAN_PAGE' });
+      const response = await sendMessageToPage<{ fields?: any[] }>(tabId, { type: 'SCAN_PAGE' });
       const enriched = autoFillCoreApi.enrichScan(response.fields ?? [], latestState);
       setFields(enriched);
       await chrome.runtime.sendMessage({
@@ -60,7 +82,7 @@ export function Popup() {
       const tabId = await getActiveTabId();
       if (!tabId) throw new Error('No active tab found');
       const instructions = autoFillCoreApi.createFillInstructions(fields, state.settings.autoFillThreshold);
-      const result = await chrome.tabs.sendMessage(tabId, { type: 'FILL_FIELDS', payload: { instructions } });
+      const result = await sendMessageToPage<{ results: Array<{ status: string }> }>(tabId, { type: 'FILL_FIELDS', payload: { instructions } });
 
       for (const field of fields) {
         const instruction = instructions.find((item) => item.elementId === field.elementId);
