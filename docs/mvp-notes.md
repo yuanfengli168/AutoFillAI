@@ -37,10 +37,31 @@ A working Chrome extension MVP built with:
 ## Known caveats
 
 - Custom JS widgets / headless comboboxes are not fully supported yet.
+- Native `select` elements are scanned, but option-level UX and custom radio/yes-no widgets are not surfaced well yet.
 - Select filling currently uses raw option values; labels are not fuzzy-matched yet.
 - Popup only exposes "fill high-confidence" right now, not per-field manual fill controls.
+- Popup scan state is not pinned yet; switching tabs or closing/reopening the popup requires a fresh scan.
+- Confidence thresholds are intentionally conservative, so a field can be correctly classified but still sit below the autofill threshold.
 - Correction learning is not yet implemented.
 - Default seeded values are minimal (name + LinkedIn URL) and should be expanded in Options for real use.
+
+## Debugging log - 2026-04-23
+
+Live debugging on real target pages was driven by user feedback, screenshots, and repeated manual retests in Chrome.
+
+Observed sequence:
+1. Popup opened, but `Scan page` failed with `Could not establish connection. Receiving end does not exist.`
+2. Added popup-side recovery to inject the content script when the receiver is missing.
+3. User then hit `Cannot use import statement outside a module` during fallback injection.
+4. Added a temporary bootstrap loader, which then exposed `Failed to fetch dynamically imported module` because extension module assets were not accessible from the page context.
+5. Final root cause: the content script build output was ESM/chunked, but the manifest-loaded content script path needed a single classic script bundle.
+6. Reworked the build so `dist/content.js` is emitted as one self-contained classic bundle via `esbuild`, while Vite continues to build popup/options/background.
+7. User reloaded the unpacked extension and confirmed page scanning now works for text fields.
+
+Outcome:
+- content script loading is stable again
+- popup scan works after reload on the tested page
+- remaining product gaps are now about field coverage/UX rather than extension boot failure
 
 ## Local test flow
 
