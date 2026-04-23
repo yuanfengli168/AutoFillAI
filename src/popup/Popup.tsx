@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { autoFillCoreApi } from '../core/api';
-import type { AppState, DetectedField, EnrichedDetectedField, FieldType } from '../core/types';
+import type { AppState, DetectedField, EnrichedDetectedField, FieldType, ValueVersion } from '../core/types';
 import { FIELD_TYPES } from '../core/types';
 
 interface ActiveTabInfo {
@@ -10,6 +10,41 @@ interface ActiveTabInfo {
 
 function normalizeKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function getProfileValues(state: AppState | null, fieldType: FieldType) {
+  return (state?.profileValues[fieldType] ?? []).filter((item) => item.active);
+}
+
+function resolveFieldValue(
+  field: DetectedField,
+  state: AppState,
+  fieldTypeOverrides: Record<string, FieldType>,
+  fieldValueOverrides: Record<string, string>
+) {
+  const overrideFieldType = fieldTypeOverrides[field.elementId];
+  const effectiveFieldType = overrideFieldType ?? field.candidateFieldTypes[0]?.fieldType ?? 'unknown';
+  const valueOverrideId = fieldValueOverrides[field.elementId];
+
+  if (valueOverrideId && effectiveFieldType !== 'unknown') {
+    const matched = getProfileValues(state, effectiveFieldType).find((item) => item.id === valueOverrideId);
+    if (matched) {
+      return {
+        fieldType: effectiveFieldType,
+        valueId: matched.id,
+        value: matched.value,
+        confidence: 1,
+        source: 'manual_override' as const,
+        reasons: [`user selected saved value ${matched.label || matched.id}`]
+      };
+    }
+  }
+
+  if (overrideFieldType) {
+    return autoFillCoreApi.resolveValueForFieldType(overrideFieldType, state, 1);
+  }
+
+  return autoFillCoreApi.resolveValue(field, state);
 }
 
 async function getActiveTab(): Promise<ActiveTabInfo | null> {
@@ -53,26 +88,29 @@ function getAvailableFieldTypes(state: AppState | null) {
   return [...FIELD_TYPES.filter((type) => type !== 'unknown'), ...(state?.customFieldTypes ?? [])];
 }
 
-function buildEffectiveFields(rawFields: DetectedField[], state: AppState | null, fieldTypeOverrides: Record<string, FieldType>) {
+function buildEffectiveFields(
+  rawFields: DetectedField[],
+  state: AppState | null,
+  fieldTypeOverrides: Record<string, FieldType>,
+  fieldValueOverrides: Record<string, string>
+) {
   if (!state) return [] as EnrichedDetectedField[];
 
-  return rawFields.map((field) => {
-    const override = fieldTypeOverrides[field.elementId];
-    const resolved = override
-      ? autoFillCoreApi.resolveValueForFieldType(override, state, 1)
-      : autoFillCoreApi.resolveValue(field, state);
-
-    return {
-      ...field,
-      resolved
-    } satisfies EnrichedDetectedField;
-  });
+  return rawFields.map((field) => ({
+    ...field,
+    resolved: resolveFieldValue(field, state, fieldTypeOverrides, fieldValueOverrides)
+  } satisfies EnrichedDetectedField));
 }
 
 function buildDefaultSelections(fields: EnrichedDetectedField[], threshold: number) {
-  return Object.fromEntries(
-    fields.map((field) => [field.elementId, !!field.resolved.value && field.resolved.confidence >= threshold])
-  );
+  return Object.fromEntries(fields.map((field) => [field.elementId, !!field.resolved.value && field.resolved.confidence >= threshold]));
+}
+
+function formatValueOption(entry: ValueVersion) {
+  const meta = [entry.label || 'saved', entry.pinned ? 'default' : '', entry.useCount ? `used ${entry.useCount}x` : '']
+    .filter(Boolean)
+    .join(' · ');
+  return `${entry.value}${meta ? ` — ${meta}` : ''}`;
 }
 
 export function Popup() {
@@ -81,15 +119,20 @@ export function Popup() {
   const [rawFields, setRawFields] = useState<DetectedField[]>([]);
   const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
   const [fieldTypeOverrides, setFieldTypeOverrides] = useState<Record<string, FieldType>>({});
+  const [fieldValueOverrides, setFieldValueOverrides] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('email');
   const [newValue, setNewValue] = useState('');
   const [newCustomKey, setNewCustomKey] = useState('');
+  const [newValuePinned, setNewValuePinned] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
 
   const availableFieldTypes = useMemo(() => getAvailableFieldTypes(state), [state]);
-  const fields = useMemo(() => buildEffectiveFields(rawFields, state, fieldTypeOverrides), [rawFields, state, fieldTypeOverrides]);
+  const fields = useMemo(
+    () => buildEffectiveFields(rawFields, state, fieldTypeOverrides, fieldValueOverrides),
+    [rawFields, state, fieldTypeOverrides, fieldValueOverrides]
+  );
   const threshold = state?.settings.autoFillThreshold ?? 0.6;
   const highConfidenceCount = useMemo(
     () => fields.filter((field) => field.resolved.value && field.resolved.confidence >= threshold).length,
@@ -119,10 +162,12 @@ export function Popup() {
       setTabInfo(activeTab);
       const response = await sendMessageToPage<{ fields?: DetectedField[] }>(activeTab.id, { type: 'SCAN_PAGE' });
       const nextRawFields = response.fields ?? [];
-      const nextFields = buildEffectiveFields(nextRawFields, latestState, {});
+      const nextFields = buildEffectiveFields(nextRawFields, latestState, {}, {});
+      const nextSelections = buildDefaultSelections(nextFields, latestState.settings.autoFillThreshold);
       setRawFields(nextRawFields);
       setFieldTypeOverrides({});
-      setFieldSelections(buildDefaultSelections(nextFields, latestState.settings.autoFillThreshold));
+      setFieldValueOverrides({});
+      setFieldSelections(nextSelections);
       await chrome.runtime.sendMessage({
         type: 'LOG_EVENT',
         payload: { type: 'scan', domain: nextFields[0]?.signature.domain, details: { fieldCount: nextFields.length } }
@@ -130,7 +175,15 @@ export function Popup() {
       if (isPinned) {
         await chrome.runtime.sendMessage({
           type: 'SAVE_PINNED_SCAN',
-          payload: { tabId: activeTab.id, url: activeTab.url, fields: nextRawFields, fieldSelections: buildDefaultSelections(nextFields, latestState.settings.autoFillThreshold), fieldTypeOverrides: {}, savedAt: new Date().toISOString() }
+          payload: {
+            tabId: activeTab.id,
+            url: activeTab.url,
+            fields: nextRawFields,
+            fieldSelections: nextSelections,
+            fieldTypeOverrides: {},
+            fieldValueOverrides: {},
+            savedAt: new Date().toISOString()
+          }
         });
       }
       setMessage(`Scanned ${nextRawFields.length} fields.`);
@@ -156,14 +209,15 @@ export function Popup() {
           fieldType: field.resolved.fieldType
         }));
 
-      const result = await sendMessageToPage<{ results: Array<{ status: string }> }>(tabInfo.id, {
+      const result = await sendMessageToPage<{ results: Array<{ elementId: string; status: string }> }>(tabInfo.id, {
         type: 'FILL_FIELDS',
         payload: { instructions }
       });
 
+      const filledIds = new Set(result.results.filter((item) => item.status === 'filled').map((item) => item.elementId));
+
       for (const field of fields) {
-        const instruction = instructions.find((item) => item.elementId === field.elementId);
-        if (!instruction) continue;
+        if (!filledIds.has(field.elementId)) continue;
         await chrome.runtime.sendMessage({ type: 'MARK_VALUE_USED', payload: { fieldType: field.resolved.fieldType, valueId: field.resolved.valueId } });
         await chrome.runtime.sendMessage({
           type: 'SAVE_MAPPING',
@@ -183,7 +237,7 @@ export function Popup() {
         });
       }
 
-      setMessage(`Filled ${result.results.filter((item) => item.status === 'filled').length} fields.`);
+      setMessage(`Filled ${filledIds.size} fields.`);
       await refreshState();
       await scan();
     } catch (error) {
@@ -200,11 +254,12 @@ export function Popup() {
     try {
       await chrome.runtime.sendMessage({
         type: 'SAVE_PROFILE_VALUE',
-        payload: { fieldType: newFieldType, value: newValue.trim(), pinned: false }
+        payload: { fieldType: newFieldType, value: newValue.trim(), pinned: newValuePinned }
       });
       setNewValue('');
+      setNewValuePinned(false);
       await refreshState();
-      setMessage(`Saved ${newFieldType} value.`);
+      setMessage(`Saved ${newFieldType} value${newValuePinned ? ' as the default' : ''}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Save failed');
     } finally {
@@ -249,6 +304,7 @@ export function Popup() {
         fields: rawFields,
         fieldSelections,
         fieldTypeOverrides,
+        fieldValueOverrides,
         savedAt: new Date().toISOString()
       }
     });
@@ -264,8 +320,20 @@ export function Popup() {
       const pinned = latestState.pinnedScans[String(activeTab.id)];
       if (pinned?.url === activeTab.url) {
         setRawFields(pinned.fields);
-        setFieldSelections(pinned.fieldSelections ?? buildDefaultSelections(buildEffectiveFields(pinned.fields, latestState, pinned.fieldTypeOverrides ?? {}), latestState.settings.autoFillThreshold));
+        setFieldSelections(
+          pinned.fieldSelections ??
+            buildDefaultSelections(
+              buildEffectiveFields(
+                pinned.fields,
+                latestState,
+                pinned.fieldTypeOverrides ?? {},
+                pinned.fieldValueOverrides ?? {}
+              ),
+              latestState.settings.autoFillThreshold
+            )
+        );
         setFieldTypeOverrides(pinned.fieldTypeOverrides ?? {});
+        setFieldValueOverrides(pinned.fieldValueOverrides ?? {});
         setIsPinned(true);
         setMessage(`Loaded pinned scan (${pinned.fields.length} fields).`);
       }
@@ -282,10 +350,11 @@ export function Popup() {
         fields: rawFields,
         fieldSelections,
         fieldTypeOverrides,
+        fieldValueOverrides,
         savedAt: new Date().toISOString()
       }
     });
-  }, [isPinned, tabInfo, rawFields, fieldSelections, fieldTypeOverrides]);
+  }, [isPinned, tabInfo, rawFields, fieldSelections, fieldTypeOverrides, fieldValueOverrides]);
 
   return (
     <div className="app">
@@ -323,6 +392,10 @@ export function Popup() {
           <input type="text" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="Value to save" />
           <button onClick={() => void saveProfileValue()} disabled={loading || !newValue.trim()}>Save</button>
         </div>
+        <label className="muted" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+          <input type="checkbox" checked={newValuePinned} onChange={(e) => setNewValuePinned(e.target.checked)} />
+          Save as pinned default for this field type
+        </label>
         <div className="row" style={{ marginTop: 8 }}>
           <input type="text" value={newCustomKey} onChange={(e) => setNewCustomKey(e.target.value)} placeholder="Add custom profile key" />
           <button className="secondary" onClick={() => void addCustomKey()} disabled={loading || !newCustomKey.trim()}>Add key</button>
@@ -340,6 +413,8 @@ export function Popup() {
             const selected = !!fieldSelections[field.elementId];
             const selectedFieldType = fieldTypeOverrides[field.elementId] ?? field.resolved.fieldType;
             const detectedFieldType = top?.fieldType ?? field.resolved.fieldType ?? 'unknown';
+            const availableValues = getProfileValues(state, selectedFieldType);
+            const selectedValueId = field.resolved.valueId ?? '';
             return (
               <div key={field.elementId} className="field-item">
                 <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -364,6 +439,10 @@ export function Popup() {
                         }
                         return { ...current, [field.elementId]: nextValue };
                       });
+                      setFieldValueOverrides((current) => {
+                        const { [field.elementId]: _removed, ...rest } = current;
+                        return rest;
+                      });
                     }}
                   >
                     <option value="__auto__">auto ({detectedFieldType})</option>
@@ -378,6 +457,28 @@ export function Popup() {
                     {selected ? 'Use' : 'Not use'}
                   </button>
                 </div>
+                {selectedFieldType !== 'unknown' && availableValues.length > 1 ? (
+                  <div className="row" style={{ marginTop: 8 }}>
+                    <select
+                      value={selectedValueId || '__auto__'}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setFieldValueOverrides((current) => {
+                          if (nextValue === '__auto__') {
+                            const { [field.elementId]: _removed, ...rest } = current;
+                            return rest;
+                          }
+                          return { ...current, [field.elementId]: nextValue };
+                        });
+                      }}
+                    >
+                      <option value="__auto__">auto-pick best saved value</option>
+                      {availableValues.map((entry) => (
+                        <option key={entry.id} value={entry.id}>{formatValueOption(entry)}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
               </div>
             );
           })}

@@ -7,6 +7,7 @@ import {
   saveMapping,
   savePinnedScan,
   saveProfileValue,
+  setPinnedValue,
   updateSettings
 } from '../core/storage';
 import type { BackgroundMessage } from '../shared/messages';
@@ -29,6 +30,12 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
           pinned: message.payload.pinned
         });
         await appendAuditEvent({ type: 'save_value', details: { fieldType: message.payload.fieldType } });
+        sendResponse(state);
+        return;
+      }
+      case 'SET_PINNED_VALUE': {
+        const state = await setPinnedValue(message.payload.fieldType, message.payload.valueId);
+        await appendAuditEvent({ type: 'save_value', details: { fieldType: message.payload.fieldType, pinnedValueId: message.payload.valueId ?? null } });
         sendResponse(state);
         return;
       }

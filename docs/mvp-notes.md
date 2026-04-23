@@ -24,8 +24,10 @@ A working Chrome extension MVP built with:
   4. most recent
   5. most frequent
 - Popup UI to inspect detected fields and suggested values
-- One-click fill for high-confidence empty fields
+- Popup per-field controls to override the detected profile key and choose among multiple saved values for that field
+- One-click fill for selected high-confidence empty fields
 - Local profile value store in options page
+- Explicit pinned-default management for saved values in popup and options
 - Learned mappings saved after successful fills
 - Value usage metadata updates (`useCount`, `lastUsedAt`)
 
@@ -35,6 +37,7 @@ A working Chrome extension MVP built with:
 - MVP is single-profile and local-only.
 - Autofill only targets empty visible enabled fields unless future overwrite support is expanded.
 - Heuristics are deterministic and intentionally conservative; ambiguous fields stay lower confidence.
+- Pinned defaults are now explicit; saving a first value no longer silently makes it the default unless the user chooses that.
 - Mapping learning happens after successful fill, using a lightweight matcher (`domain` + `name/id/label/placeholder/path`).
 
 ## Known caveats
@@ -42,9 +45,9 @@ A working Chrome extension MVP built with:
 - Custom JS widgets / headless comboboxes are not fully supported yet.
 - Native `select` elements are scanned and their option labels are shown, but custom radio/yes-no widgets are still not surfaced well yet.
 - Select filling currently uses raw option values; labels are not fuzzy-matched yet.
-- Popup only exposes "fill high-confidence" right now, not per-field manual fill controls.
-- Popup scan state is not pinned yet; switching tabs or closing/reopening the popup requires a fresh scan.
-- Confidence thresholds are intentionally conservative, so a field can be correctly classified but still sit below the autofill threshold.
+- Popup supports per-field value choice, but fill still runs as a batch action rather than a one-field inline fill button.
+- Pinned scan state and manual value selections persist per tab, but only for the same tab/url combination.
+- Confidence thresholds are intentionally conservative, so a field can be correctly classified but still sit below the autofill threshold unless manually selected.
 - Correction learning is not yet implemented.
 - Default seeded values are minimal (name + LinkedIn URL) and should be expanded in Options for real use.
 

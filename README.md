@@ -36,8 +36,9 @@ Functional MVP scaffolded on branch `mvp1`.
 Implemented:
 - current-page scan for standard form controls
 - field metadata extraction + heuristic classification
-- popup UI to inspect scan results
+- popup UI to inspect scan results, override field type, and choose among multiple saved values per field
 - local profile value storage + options page
+- explicit pinned default management for saved values in popup/options
 - high-confidence autofill for empty fields
 - learned site mappings and value-usage audit updates
 

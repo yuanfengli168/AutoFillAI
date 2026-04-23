@@ -7,6 +7,7 @@ export type ContentMessage =
 export type BackgroundMessage =
   | { type: 'GET_STATE' }
   | { type: 'SAVE_PROFILE_VALUE'; payload: { fieldType: string; value: string; label?: string; pinned?: boolean } }
+  | { type: 'SET_PINNED_VALUE'; payload: { fieldType: string; valueId?: string } }
   | { type: 'SAVE_MAPPING'; payload: Record<string, unknown> }
   | { type: 'MARK_VALUE_USED'; payload: { fieldType: string; valueId?: string } }
   | { type: 'LOG_EVENT'; payload: { type: string; domain?: string; details?: Record<string, unknown> } }
